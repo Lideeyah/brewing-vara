@@ -1,0 +1,91 @@
+
+!@sails: 1.0.0
+
+service ReputationOracle@0xe3aa28a7da2c73e8 {
+    events {
+        ApprovedSourceAdded {
+            source: ActorId,
+        },
+        ApprovedSourceRemoved {
+            source: ActorId,
+        },
+        CompletionRecorded {
+            worker: ActorId,
+            succeeded: bool,
+            value: u128,
+        },
+        FeesWithdrawn {
+            to: ActorId,
+            amount: u128,
+        },
+        QueryFeeUpdated {
+            new_fee: u128,
+        },
+        ScoreQueried {
+            worker: ActorId,
+            querier: ActorId,
+            fee_paid: u128,
+        },
+    }
+    functions {
+        /// Add an approved source (e.g., a job board). Owner only.
+        AddApprovedSource(source: ActorId) -> bool;
+        /// Return total VARA fees collected but not yet withdrawn.
+        @query
+        CollectedFees() -> u128;
+        /// Query a worker's reputation score. Charges `query_fee` VARA.
+        /// 
+        /// - Underpayment: panics `"InsufficientFee"` — Gear auto-refunds attached value on panic.
+        /// - Overpayment: excess returned atomically via `CommandReply::with_value`.
+        /// - Exact payment: no refund needed.
+        GetScore(worker: ActorId) -> ReputationScore;
+        /// Check if an address is an approved submission source.
+        @query
+        IsApprovedSource(source: ActorId) -> bool;
+        /// Return the program owner.
+        @query
+        Owner() -> ActorId;
+        /// Return the current per-query fee in planck-units.
+        @query
+        QueryFee() -> u128;
+        /// Return a worker's reputation score — free read, no fee charged.
+        @query
+        QueryScore(worker: ActorId) -> ReputationScore;
+        /// Record a job completion (or dispute) for a worker.
+        /// 
+        /// Caller must be an approved source OR the owner.
+        /// Workers cannot self-report (worker != msg::source()).
+        RecordCompletion(worker: ActorId, succeeded: bool, value: u128) -> bool;
+        /// Remove an approved source. Owner only.
+        RemoveApprovedSource(source: ActorId) -> bool;
+        /// Update the per-query fee. Owner only.
+        SetQueryFee(fee: u128) -> bool;
+        /// Withdraw accumulated fees to the owner wallet. Owner only.
+        /// Panics `"NotOwner"` if caller is not the owner.
+        WithdrawFees() -> u128;
+    }
+    types {
+        /// Reputation score returned to callers of GetScore / QueryScore.
+        struct ReputationScore {
+            worker: ActorId,
+            completed: u32,
+            disputed: u32,
+            /// Basis points (0-10 000). 10 000 if the worker has no history.
+            success_rate: u32,
+            total_value: u128,
+        }
+    }
+}
+
+program BrewingRepOracle {
+    constructors {
+        /// Constructor.
+        /// 
+        /// - `owner`: defaults to `msg::source()` (the deploying wallet).
+        /// - `query_fee`: defaults to `DEFAULT_QUERY_FEE` (0.1 VARA).
+        Init(owner: Option<ActorId>, query_fee: Option<u128>);
+    }
+    services {
+        ReputationOracle@0xe3aa28a7da2c73e8,
+    }
+}

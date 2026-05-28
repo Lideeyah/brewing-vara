@@ -30,10 +30,10 @@ members = ["app", "client"]
 
 [workspace.package]
 version = "0.1.0"
-authors = ["Gear Technologies"]
+authors = ["Lydia Solomon"]
 edition = "2024"
 rust-version = "1.91"
-repository = "https://github.com/gear-tech/brewing-rep-oracle"
+repository = "https://github.com/Lideeyah/brewing-vara"
 license = "MIT"
 keywords = ["gear", "sails", "smart-contracts", "wasm", "no-std"]
 categories = ["cryptography::cryptocurrencies", "no-std", "wasm"]

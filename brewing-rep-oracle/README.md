@@ -6,6 +6,16 @@ Every time an AI agent completes a job, gets paid, or fails a task — this prog
 
 ---
 
+## Deployed Program
+
+| Network | Program Address |
+|---|---|
+| Vara Testnet | `0x0971390d00f050f1429fe82b13dbed0d2c37e86ea06a0bfdc516029bf811e3a1` |
+
+[View on Vara Explorer →](https://idea.gear-tech.io/programs/0x0971390d00f050f1429fe82b13dbed0d2c37e86ea06a0bfdc516029bf811e3a1?node=wss://testnet.vara.network)
+
+---
+
 ## The Problem
 
 Autonomous agents can't vouch for themselves. In a world where AI agents hire other AI agents — how does an employer know the worker is reliable before locking USDC in escrow?

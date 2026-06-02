@@ -1,166 +1,163 @@
-# Brewing Reputation Oracle
+<div align="center">
 
-**The trust primitive for autonomous agent economies on Vara.**
+# ◈ Brewing Reputation Oracle
 
-Every time an AI agent completes a job, gets paid, or fails a task — this program records it on-chain. Any contract can query a worker's track record before releasing funds. No centralized registry. No self-reporting. No trust required.
+### The trust primitive for autonomous agent economies on Vara.
 
----
+*Before you pay an agent — know if it's ever been trusted.*
 
-## Deployed Program
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Network](https://img.shields.io/badge/Vara-Testnet-brightgreen)](https://idea.gear-tech.io/programs/0x0971390d00f050f1429fe82b13dbed0d2c37e86ea06a0bfdc516029bf811e3a1?node=wss://testnet.vara.network)
+[![Built with Sails](https://img.shields.io/badge/Built%20with-Sails-blue)](https://github.com/gear-tech/sails)
+[![Tests](https://img.shields.io/badge/Tests-Passing-success)](#test)
 
-| Network | Program Address |
-|---|---|
-| Vara Testnet | `0x0971390d00f050f1429fe82b13dbed0d2c37e86ea06a0bfdc516029bf811e3a1` |
+**[View on Vara Explorer →](https://idea.gear-tech.io/programs/0x0971390d00f050f1429fe82b13dbed0d2c37e86ea06a0bfdc516029bf811e3a1?node=wss://testnet.vara.network)**
 
-[View on Vara Explorer →](https://idea.gear-tech.io/programs/0x0971390d00f050f1429fe82b13dbed0d2c37e86ea06a0bfdc516029bf811e3a1?node=wss://testnet.vara.network)
+</div>
 
 ---
 
 ## The Problem
 
-Autonomous agents can't vouch for themselves. In a world where AI agents hire other AI agents — how does an employer know the worker is reliable before locking USDC in escrow?
+Autonomous agents are hiring other autonomous agents. Right now, there is no way to know if the agent you're about to pay has ever completed a job, failed one, or been disputed.
 
-Off-chain reputation is gameable. On-chain reputation, written only by verified job boards and settled by the ledger itself, is not.
+Off-chain reputation is gameable. Self-reported reputation is worthless. And most chains can't compose trust checks inside smart contract logic.
 
----
-
-## What It Is
-
-`brewing-rep-oracle` is a Vara Sails program that maintains a **tamper-proof, composable reputation ledger** for any actor on the network.
-
-- Approved job boards (not workers) submit completion records
-- Workers cannot self-report — the program rejects any call where `worker == msg::source()`
-- Reputation is expressed as a **success rate in basis points** (0–10,000), queryable free or fee-gated
-- Any Vara program can call `RecordCompletion` to write, or `QueryScore` / `GetScore` to read
-- Accumulated query fees are withdrawable by the owner — creating a sustainable oracle fee model
-
-This is infrastructure. It's the primitive that makes trustless agent coordination possible on Vara.
+**Vara can. This program does.**
 
 ---
 
-## Architecture
+## What It Does
+
+`BrewingRepOracle` is an on-chain reputation ledger deployed on Vara. It tracks every job completion and dispute for any actor — and exposes that history as a composable, fee-gated query any Vara program can call.
+
+```rust
+// Inside your escrow or job board program:
+// Check reputation before releasing funds — one call, on-chain.
+
+let score = BrewingRepOracleClient::new(oracle_program_id, exec_context)
+    .reputation_oracle()
+    .get_score(worker_actor_id)
+    .with_value(query_fee)   // 0.1 VARA
+    .await;
+
+if score.success_rate < 8_000 {
+    // Below 80% success rate — reject or require higher collateral
+    return Err("Worker reputation insufficient");
+}
+// Proceed with settlement
+```
+
+No API call. No bridge. No trusted intermediary. Pure on-chain composability.
+
+---
+
+## Deployed Program
+
+| Network | Address |
+|---|---|
+| **Vara Testnet** | `0x0971390d00f050f1429fe82b13dbed0d2c37e86ea06a0bfdc516029bf811e3a1` |
+
+---
+
+## How It Works
 
 ```
-Job Board / Escrow Program
-        │
-        │ RecordCompletion(worker, succeeded, value)
-        ▼
- ┌──────────────────────────────┐
- │   BrewingRepOracle (Vara)    │
- │                              │
- │  ledger: ActorId → Entry     │
- │    .completed: u32           │
- │    .disputed:  u32           │
- │    .total_value: u128 (VARA) │
- │    .last_updated: u64 (ms)   │
- │                              │
- │  approved_sources: BTreeSet  │
- └──────────────────────────────┘
-        │
-        │ QueryScore(worker) → ReputationScore
-        │   .success_rate: u32  (basis points)
-        │   .completed / .disputed / .total_value
-        ▼
- Employer Program / Off-chain Client
+  Job Board / Escrow Contract
+           │
+           │  RecordCompletion(worker, succeeded, value)
+           │  ← Only approved sources. Workers cannot self-report.
+           ▼
+  ┌─────────────────────────────────────┐
+  │        BrewingRepOracle             │
+  │                                     │
+  │  ledger: ActorId → {                │
+  │    completed:    u32,               │
+  │    disputed:     u32,               │
+  │    total_value:  u128,  (VARA)      │
+  │    last_updated: u64,   (ms)        │
+  │  }                                  │
+  │                                     │
+  │  approved_sources: BTreeSet<ActorId>│
+  └─────────────────────────────────────┘
+           │
+           │  GetScore(worker) → ReputationScore
+           │    .success_rate  — basis points 0–10,000
+           │    .completed     — total jobs done
+           │    .disputed      — total disputes
+           │    .total_value   — lifetime VARA earned
+           ▼
+  Employer Program / Off-chain Dashboard
 ```
+
+**Three guarantees baked into the contract:**
+
+| Guarantee | How |
+|---|---|
+| Workers can't lie | `worker == msg::source()` → panic + auto-refund |
+| No overflow | `saturating_add` on counters, `checked_add` on fees |
+| Composable on-chain | `GetScore` returns excess VARA atomically via `CommandReply::with_value` |
 
 ---
 
 ## Interface
 
-Full IDL at [`brewing_rep_oracle.idl`](brewing_rep_oracle.idl).
+Full IDL: [`brewing_rep_oracle.idl`](brewing_rep_oracle.idl) · Skills: [`skills.md`](skills.md)
 
-### Write functions
+### Write — approved sources only
 
-| Function | Auth | Description |
+| Method | Who | What |
 |---|---|---|
-| `RecordCompletion(worker, succeeded, value)` | Approved source or owner | Write a job outcome. Workers cannot self-report. |
-| `AddApprovedSource(source)` | Owner | Authorise a job board to submit records. |
-| `RemoveApprovedSource(source)` | Owner | Revoke a source. |
-| `SetQueryFee(fee)` | Owner | Update per-query fee in planck-units. |
-| `WithdrawFees()` | Owner | Pull accumulated query fees to owner wallet. |
+| `RecordCompletion(worker, succeeded, value)` | Approved source / owner | Record a job outcome |
+| `AddApprovedSource(source)` | Owner | Whitelist a job board |
+| `RemoveApprovedSource(source)` | Owner | Revoke a source |
+| `SetQueryFee(fee)` | Owner | Change per-query fee |
+| `WithdrawFees()` | Owner | Collect accumulated VARA fees |
 
-### Read functions
+### Read — open to anyone
 
-| Function | Cost | Description |
+| Method | Cost | Returns |
 |---|---|---|
-| `QueryScore(worker)` | Free | Off-chain reputation lookup — no fee. |
-| `GetScore(worker)` | 0.1 VARA | On-chain composable query — charges `query_fee`. Overpayment returned atomically. |
-| `IsApprovedSource(source)` | Free | Check source authorisation status. |
-| `CollectedFees()` | Free | Total VARA in fee balance. |
-| `QueryFee()` | Free | Current per-query fee. |
-| `Owner()` | Free | Contract owner address. |
+| `QueryScore(worker)` | **Free** | `ReputationScore` — for off-chain clients |
+| `GetScore(worker)` | **0.1 VARA** | `ReputationScore` — composable on-chain query |
+| `IsApprovedSource(source)` | Free | `bool` |
+| `CollectedFees()` | Free | `u128` |
 
 ### Events
 
-All state changes emit typed events: `CompletionRecorded`, `ApprovedSourceAdded`, `ApprovedSourceRemoved`, `ScoreQueried`, `QueryFeeUpdated`, `FeesWithdrawn`.
+`CompletionRecorded` · `ScoreQueried` · `ApprovedSourceAdded` · `ApprovedSourceRemoved` · `QueryFeeUpdated` · `FeesWithdrawn`
 
 ---
 
-## Key Properties
-
-**Anti-cheat.** Two self-loop checks:
-1. Workers cannot call `RecordCompletion` for themselves (`worker == caller` → panic, auto-refund)
-2. The program cannot message itself (`program_id == caller` → panic, auto-refund)
-
-**Overflow-safe.** All counters use `saturating_add`. Fee accounting uses `checked_add` with explicit panic on overflow.
-
-**Composable.** `GetScore` is designed for on-chain callers. Underpayment panics (Gear auto-refunds). Overpayment returns excess via `CommandReply::with_value`. Exact payment: no refund overhead.
-
-**Untested workers start at 10,000 bps.** A fresh worker's success rate is 100% — neutral default, not punished for having no history.
-
----
-
-## Build
+## Build & Test
 
 ```bash
-# Install Vara/Gear toolchain
-rustup target add wasm32-unknown-unknown
-
-# Build the WASM binary and generate IDL
+# Build WASM + generate IDL
 cargo build --release
-```
 
-Output: `target/wasm32-unknown-unknown/release/brewing_rep_oracle.opt.wasm`
-
----
-
-## Test
-
-```bash
+# Run full test suite
 cargo test --release
 ```
 
-The test suite covers:
-- Owner defaults to deployer
-- Auth guards on all write functions (stranger panics)
-- `RecordCompletion` updates ledger correctly
-- Success rate calculation (basis points)
-- `QueryScore` (free) matches `GetScore` (fee-gated) output
-- `WithdrawFees` transfers collected balance
-- `SetQueryFee` updates fee
-- Event emission verified with stream listener
-
----
-
-## Deploy to Vara Testnet
-
-1. Get VARA testnet tokens from the [Vara faucet](https://idea.gear-tech.io)
-2. Open [idea.gear-tech.io](https://idea.gear-tech.io) → Upload Program
-3. Upload `brewing_rep_oracle.opt.wasm` with `brewing_rep_oracle.idl`
-4. Call `Init(None, None)` — owner = your wallet, fee = 0.1 VARA default
-5. Copy the program address and call `AddApprovedSource` with your job board's address
+**Test coverage:**
+- Auth guards: owner-only and approved-source-only writes enforced
+- Anti-cheat: self-report rejected, self-loop rejected
+- Ledger: completion records update correctly
+- Math: basis-point success rate calculation
+- Parity: `QueryScore` (free) matches `GetScore` (paid) output
+- Events: stream listener verifies emission on every state change
+- Fee lifecycle: `SetQueryFee` → `GetScore` → `WithdrawFees` end-to-end
 
 ---
 
 ## Why Vara
 
-Vara's actor model makes this program composable by design. Any program can message `BrewingRepOracle` directly — no bridges, no APIs, no trusted intermediaries. The same program that locks USDC in escrow can query reputation before releasing funds, in a single asynchronous message chain. That's not possible on most chains.
+Every program on Vara can message every other program directly — asynchronously, with typed arguments, no bridges. `GetScore` was designed for this: an escrow contract can check reputation and release funds in the same message chain that receives job completion.
 
-Sails gives the IDL as the source of truth. Client code is generated from it. Any program that imports the client can call this oracle as if it were a typed Rust function.
+Sails generates the client crate from the IDL. Any program importing `brewing-rep-oracle-client` calls this oracle like a typed Rust function. The reputation layer composes with any Vara protocol — job boards, prediction markets, agent orchestrators, staking programs — without any changes to this oracle.
 
 ---
 
 ## License
 
-MIT
+MIT — build on it.
